@@ -78,3 +78,15 @@ Do not fabricate a failed attempt just to fill the template. Record actual attem
 - Retest evidence: GET /ready via NGINX returned HTTP/1.1 200 OK with {"dependencies":{"postgres":"ready","redis":"ready"},"status":"ready",...} after recreating app-01/app-02.
 - Related commit:
 - Remaining uncertainty: none
+
+
+## Entry 6 / 2026-09-08 / ~6:10 PM
+- Symptom: (to verify) Records created via /records may not survive container recreation.
+- Hypothesis: docker-compose.yml mounts the named volume postgres-data at /var/lib/postgresql/backup (wrong path), while the actual Postgres data directory /var/lib/postgresql/data is on tmpfs, which is wiped on container removal.
+- Command or test: grep -A4 "postgres:" docker-compose.yml | grep -E "volumes|tmpfs"
+- Actual output: volumes: postgres-data:/var/lib/postgresql/backup ; tmpfs: [/var/lib/postgresql/data]
+- Root cause: The named volume is mounted at the wrong path (backup instead of data), so PGDATA (/var/lib/postgresql/data) falls back to the tmpfs mount, which is ephemeral (RAM-backed, wiped on container recreation).
+- Fix: Changed volume mount to postgres-data:/var/lib/postgresql/data and removed the tmpfs line entirely.
+- Retest evidence: Created record id=3 ("Persistence proof") via POST /records. Ran `docker compose up -d --force-recreate postgres app-01 app-02`. GET /records afterward still shows id=3 alongside pre-existing records — confirmed the volume now persists data correctly across container recreation.
+- Related commit: (pending - filled after commit below)
+- Remaining uncertainty: none
