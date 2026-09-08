@@ -66,3 +66,15 @@ Do not fabricate a failed attempt just to fill the template. Record actual attem
 - Retest evidence: docker port nginx shows 80/tcp -> 127.0.0.1:8080. curl -i http://127.0.0.1:8080/ returns HTTP/1.1 200 OK and X-Instance-ID: app-01. Ten repeated requests to /instance alternated between app-01 and app-02, confirming that NGINX can reach and load-balance both backend instances.
 - Related commit: a578321
 - Remaining uncertainty: None for NGINX upstream connectivity and load balancing.
+
+## Entry 5 / 2026-09-08 / ~4:50 PM
+- Symptom: GET /ready returns 503 with {"postgres":"unavailable","redis":"unavailable"}.
+- Hypothesis: config/app.env has incorrect connection details (wrong port and/or password) for postgres/redis.
+- Command or test: docker exec postgres printenv | grep POSTGRES_PASSWORD; docker exec redis redis-cli CONFIG GET port; docker exec postgres cat /var/lib/postgresql/data/postgresql.conf | grep -i "^port"
+- Actual output: Actual postgres port=5432 (default), password ends in "...8c". Actual redis port=6379 (default). But config/app.env had DATABASE_URL with port 5433 and password ending "...8d", and REDIS_URL with port 6380.
+- Failed attempt and what changed your thinking: N/A - verified actual container config directly before editing, rather than assuming which side (env file or container) was correct.
+- Root cause: config/app.env contained stale/incorrect DATABASE_URL and REDIS_URL values — wrong ports (5433/6380 instead of the actual 5432/6379) and a wrong postgres password (differed by one character: "d" vs "c").
+- Fix: Corrected config/app.env DATABASE_URL port to 5432 and password to match POSTGRES_PASSWORD ("...8c"); corrected REDIS_URL port to 6379.
+- Retest evidence: GET /ready via NGINX returned HTTP/1.1 200 OK with {"dependencies":{"postgres":"ready","redis":"ready"},"status":"ready",...} after recreating app-01/app-02.
+- Related commit:
+- Remaining uncertainty: none
