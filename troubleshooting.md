@@ -21,3 +21,7 @@ Do not fabricate a failed attempt just to fill the template. Record actual attem
 - Command or test: docker logs app-01
 - Actual output: {"path": "/healthz", "status": 404} repeated every ~5s
 - Root cause: docker-compose.yml healthcheck hits /healthz, but per assessment/APPLICATION.md the real endpoint is /health.
+- Fix: Changed docker-compose.yml healthcheck test path from /healthz to /health (x-app anchor, applies to both app-01 and app-02).
+- Retest evidence: docker compose -p barq-assessment ps -a shows app-01 as "Up (healthy)" after docker compose up -d.
+- Related commit: (pending - will fill after commit below)
+- Remaining uncertainty: none
