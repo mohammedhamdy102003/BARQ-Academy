@@ -76,7 +76,7 @@ Do not fabricate a failed attempt just to fill the template. Record actual attem
 - Root cause: config/app.env contained stale/incorrect DATABASE_URL and REDIS_URL values — wrong ports (5433/6380 instead of the actual 5432/6379) and a wrong postgres password (differed by one character: "d" vs "c").
 - Fix: Corrected config/app.env DATABASE_URL port to 5432 and password to match POSTGRES_PASSWORD ("...8c"); corrected REDIS_URL port to 6379.
 - Retest evidence: GET /ready via NGINX returned HTTP/1.1 200 OK with {"dependencies":{"postgres":"ready","redis":"ready"},"status":"ready",...} after recreating app-01/app-02.
-- Related commit:
+- Related commit:9b3489a
 - Remaining uncertainty: none
 
 
@@ -89,4 +89,49 @@ Do not fabricate a failed attempt just to fill the template. Record actual attem
 - Fix: Changed volume mount to postgres-data:/var/lib/postgresql/data and removed the tmpfs line entirely.
 - Retest evidence: Created record id=3 ("Persistence proof") via POST /records. Ran `docker compose up -d --force-recreate postgres app-01 app-02`. GET /records afterward still shows id=3 alongside pre-existing records — confirmed the volume now persists data correctly across container recreation.
 - Related commit: (pending - filled after commit below)
+- Remaining uncertainty: none
+
+
+## Entry 7 / 2026-09-08 / ~7:05 PM
+- Symptom: PostgreSQL and Redis ports were published on the host (127.0.0.1:15432 and 127.0.0.1:16379), although only NGINX should be publicly reachable.
+- Hypothesis: Removing these host port mappings should not break app connectivity since apps reach postgres/redis via the internal backend network using service names.
+- Command or test: grep -n -A12 '^  postgres:' docker-compose.yml ; grep -n -A12 '^  redis:' docker-compose.yml
+- Actual output: postgres had `ports: ["127.0.0.1:15432:5432"]`; redis had `ports: ["127.0.0.1:16379:6379"]`.
+- Root cause: Backend services unnecessarily exposed host ports, violating the requirement that only NGINX be published.
+- Fix: Removed the `ports` entries from both postgres and redis services.
+- Retest evidence: `docker port postgres` and `docker port redis` return no output (no published ports). `docker compose ps -a` still shows both healthy; app connectivity via /ready remains 200.
+- Related commit: 7e3592a
+- Remaining uncertainty: none
+
+## Entry 8 / 2026-09-08 / ~7:10 PM
+- Symptom: NGINX was attached to both frontend and backend networks, giving it direct network-level reach to postgres/redis.
+- Hypothesis: NGINX only needs frontend (to reach app-01/app-02); backend access is unnecessary and violates the isolation requirement.
+- Command or test: grep -n -A6 '^  nginx:' docker-compose.yml
+- Actual output: `networks: [frontend, backend]` under the nginx service.
+- Root cause: NGINX was over-privileged on the network layer.
+- Fix: Changed NGINX's networks to `[frontend]` only.
+- Retest evidence: `docker compose ps -a` shows nginx running; `curl -i http://127.0.0.1:8080/` still returns 200 OK, confirming NGINX→app connectivity still works over frontend alone.
+- Related commit: 8bf24f6
+- Remaining uncertainty: none
+
+## Entry 9 / 2026-09-08 / ~7:20 PM
+- Symptom: Dockerfile created a dedicated non-root user (app, uid 10001) but the final `USER root` line overrode it, so the container ran as root.
+- Hypothesis: Changing the final USER directive to `app` should make the container run unprivileged without breaking functionality.
+- Command or test: grep -n -B5 -A2 'USER root' Dockerfile
+- Actual output: `USER root` was the last USER directive before CMD.
+- Root cause: The image defined a least-privilege user but never switched to it at runtime.
+- Fix: Changed `USER root` to `USER app` in the Dockerfile.
+- Retest evidence: `docker exec app-01 id` and `docker exec app-02 id` both return `uid=10001(app) gid=10001(app) groups=10001(app)`.
+- Related commit: 2801eae
+- Remaining uncertainty: none
+
+## Entry 10 / 2026-09-08 / ~7:30 PM
+- Symptom: Application services had `restart: "no"`, and postgres/redis had no explicit restart policy.
+- Hypothesis: Services should restart automatically after failure or Docker daemon restart, per assessment requirements.
+- Command or test: grep -n 'restart:' docker-compose.yml
+- Actual output: `restart: "no"` under x-app; no restart key under postgres/redis.
+- Root cause: Restart behavior was not configured, so a crashed container would stay down.
+- Fix: Set `restart: unless-stopped` on the x-app anchor and added the same to postgres and redis.
+- Retest evidence: `docker compose ps -a` shows all five services Up and healthy after recreation with the new policy in place.
+- Related commit: 2451e5c
 - Remaining uncertainty: none
