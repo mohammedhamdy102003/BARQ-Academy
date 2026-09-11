@@ -6,10 +6,12 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import os
 
 
-BASE_URL = "http://127.0.0.1:8080"
-TARGET = "app-02"
+PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8080")
+BASE_URL = f"http://127.0.0.1:{PUBLIC_PORT}"
+TARGET = os.getenv("TARGET", "app-02")
 REQUEST_COUNT = 20
 REQUEST_TIMEOUT = 3
 RECOVERY_TIMEOUT = 30

@@ -9,7 +9,15 @@ import urllib.error
 import urllib.request
 
 
-BASE_URL = "http://127.0.0.1:8080"
+import os
+
+PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8080")
+APP_INSTANCES = [
+    name.strip()
+    for name in os.getenv("APP_INSTANCES", "app-01,app-02").split(",")
+    if name.strip()
+]
+BASE_URL = f"http://127.0.0.1:{PUBLIC_PORT}"
 TIMEOUT = 3
 READY_WAIT = 30
 
@@ -121,7 +129,7 @@ def main():
     # ------------------------------------------------------------
     # 2. Required containers
     # ------------------------------------------------------------
-    containers = ["app-01", "app-02", "nginx", "postgres", "redis"]
+    containers = APP_INSTANCES + ["nginx", "postgres", "redis"]
 
     for container in containers:
         check(
@@ -132,7 +140,7 @@ def main():
     # ------------------------------------------------------------
     # 3. Container health
     # ------------------------------------------------------------
-    for container in ["app-01", "app-02", "postgres", "redis"]:
+    for container in APP_INSTANCES + ["postgres", "redis"]:
         check(
             f"{container} is healthy",
             container_healthy(container),
@@ -206,22 +214,20 @@ def main():
     # ------------------------------------------------------------
     instances_seen = set()
 
-    for _ in range(12):
+    for _ in range(max(12, len(APP_INSTANCES) * 6)):
         status, body = http_get("/instance")
 
         if status == 200:
             value = body.strip()
 
-            if "app-01" in value:
-                instances_seen.add("app-01")
-
-            if "app-02" in value:
-                instances_seen.add("app-02")
+            for instance in APP_INSTANCES:
+                if instance in value:
+                    instances_seen.add(instance)
 
     check(
-        "Both backend instances serve traffic",
-        {"app-01", "app-02"}.issubset(instances_seen),
-        f"observed: {', '.join(sorted(instances_seen)) or 'none'}",
+        "All configured backend instances serve traffic",
+        set(APP_INSTANCES).issubset(instances_seen),
+        f"expected: {', '.join(APP_INSTANCES)}; observed: {', '.join(sorted(instances_seen)) or 'none'}",
     )
 
     # ------------------------------------------------------------
@@ -246,8 +252,10 @@ def main():
     # 9. NGINX should be frontend-only
     # ------------------------------------------------------------
     nginx_networks = set(get_networks("nginx").keys())
-    app01_networks = set(get_networks("app-01").keys())
-    app02_networks = set(get_networks("app-02").keys())
+    app_networks = {
+        instance: set(get_networks(instance).keys())
+        for instance in APP_INSTANCES
+    }
     postgres_networks = set(get_networks("postgres").keys())
     redis_networks = set(get_networks("redis").keys())
 
@@ -265,8 +273,11 @@ def main():
 
     check(
         "Application instances are connected to backend",
-        any("backend" in network for network in app01_networks)
-        and any("backend" in network for network in app02_networks),
+        all(
+            any("backend" in network for network in networks)
+            for networks in app_networks.values()
+        ),
+        f"networks: {', '.join(f'{name}={sorted(networks)}' for name, networks in app_networks.items())}",
     )
 
     check(
