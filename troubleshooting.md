@@ -23,7 +23,7 @@ Do not fabricate a failed attempt just to fill the template. Record actual attem
 - Root cause: docker-compose.yml healthcheck hits /healthz, but per assessment/APPLICATION.md the real endpoint is /health.
 - Fix: Changed docker-compose.yml healthcheck test path from /healthz to /health (x-app anchor, applies to both app-01 and app-02).
 - Retest evidence: docker compose -p barq-assessment ps -a shows app-01 as "Up (healthy)" after docker compose up -d.
-- Related commit: (pending - will fill after commit below)
+- Related commit: f0046b4
 - Remaining uncertainty: none
 
 ## Entry 2 / 2026-09-08 / ~3:20 PM
@@ -34,7 +34,7 @@ Do not fabricate a failed attempt just to fill the template. Record actual attem
 - Root cause: Copy-paste error in docker-compose.yml — app-02 service was given app-01's INSTANCE_ID instead of its own.
 - Fix: Changed app-02's INSTANCE_ID to "app-02".
 - Retest evidence: `docker exec app-01 ... /instance` returns {"instance_id":"app-01",...}; `docker exec app-02 ... /instance` returns {"instance_id":"app-02",...} — confirmed distinct.
-- Related commit: (pending - filled after commit below)
+- Related commit: e64e8ba
 - Remaining uncertainty: none
 
 ## Entry 3 / 2026-09-08 / ~4:00 PM
@@ -76,7 +76,7 @@ Do not fabricate a failed attempt just to fill the template. Record actual attem
 - Root cause: config/app.env contained stale/incorrect DATABASE_URL and REDIS_URL values — wrong ports (5433/6380 instead of the actual 5432/6379) and a wrong postgres password (differed by one character: "d" vs "c").
 - Fix: Corrected config/app.env DATABASE_URL port to 5432 and password to match POSTGRES_PASSWORD ("...8c"); corrected REDIS_URL port to 6379.
 - Retest evidence: GET /ready via NGINX returned HTTP/1.1 200 OK with {"dependencies":{"postgres":"ready","redis":"ready"},"status":"ready",...} after recreating app-01/app-02.
-- Related commit:9b3489a
+- Related commit: 9b3489a
 - Remaining uncertainty: none
 
 
@@ -88,7 +88,7 @@ Do not fabricate a failed attempt just to fill the template. Record actual attem
 - Root cause: The named volume is mounted at the wrong path (backup instead of data), so PGDATA (/var/lib/postgresql/data) falls back to the tmpfs mount, which is ephemeral (RAM-backed, wiped on container recreation).
 - Fix: Changed volume mount to postgres-data:/var/lib/postgresql/data and removed the tmpfs line entirely.
 - Retest evidence: Created record id=3 ("Persistence proof") via POST /records. Ran `docker compose up -d --force-recreate postgres app-01 app-02`. GET /records afterward still shows id=3 alongside pre-existing records — confirmed the volume now persists data correctly across container recreation.
-- Related commit: (pending - filled after commit below)
+- Related commit: 1b051de, 3e7e9a
 - Remaining uncertainty: none
 
 
